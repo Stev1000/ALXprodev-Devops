@@ -13,56 +13,17 @@ if [ ! -f "$JSON_FILE" ]; then
     exit 1
 fi
 
-# Function to extract and format Pokémon data
-extract_pokemon_data() {
-    # Extract basic data using jq
-    name=$(jq -r '.name' "$JSON_FILE" 2>/dev/null)
-    height=$(jq -r '.height' "$JSON_FILE" 2>/dev/null)
-    weight=$(jq -r '.weight' "$JSON_FILE" 2>/dev/null)
-    
-    # Check if jq extraction was successful
-    if [ "$name" == "null" ] || [ "$height" == "null" ] || [ "$weight" == "null" ]; then
-        echo "Error: Failed to extract basic data from JSON file."
-        exit 1
-    fi
-    
-    # Extract the first type using jq and format it
-    # The API returns types in an array, we want the first one
-    type_raw=$(jq -r '.types[0].type.name' "$JSON_FILE" 2>/dev/null)
-    
-    if [ "$type_raw" == "null" ]; then
-        echo "Error: Failed to extract type data from JSON file."
-        exit 1
-    fi
-    
-    # Capitalize the first letter of the name using sed
-    name_formatted=$(echo "$name" | sed 's/^./\U&/')
-    
-    # Capitalize the first letter of the type using sed
-    type_formatted=$(echo "$type_raw" | sed 's/^./\U&/')
-    
-    # Convert height from decimeters to meters using awk
-    # The API returns height in decimeters, so divide by 10
-    height_meters=$(echo "$height" | awk '{printf "%.1f", $1/10}')
-    
-    # Convert weight from hectograms to kilograms using awk
-    # The API returns weight in hectograms, so divide by 10
-    weight_kg=$(echo "$weight" | awk '{printf "%.0f", $1/10}')
-    
-    # Format and display the final output
-    echo "${name_formatted} is of type ${type_formatted}, weighs ${weight_kg}kg, and is ${height_meters}m tall."
-}
+# Extract name using jq and format with sed
+name=$(jq -r '.name' "$JSON_FILE" | sed 's/^./\U&/')
 
-# Main execution
-main() {
-    # Check if required commands are available
-    command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed."; exit 1; }
-    command -v awk >/dev/null 2>&1 || { echo "Error: awk is required but not installed."; exit 1; }
-    command -v sed >/dev/null 2>&1 || { echo "Error: sed is required but not installed."; exit 1; }
-    
-    # Extract and display the formatted data
-    extract_pokemon_data
-}
+# Extract type using jq and format with sed  
+type=$(jq -r '.types[0].type.name' "$JSON_FILE" | sed 's/^./\U&/')
 
-# Run the main function
-main
+# Extract height using jq and convert with awk
+formatted_height=$(jq -r '.height' "$JSON_FILE" | awk '{printf "%.1f", $1/10}')
+
+# Extract weight using jq and convert with awk
+formatted_weight=$(jq -r '.weight' "$JSON_FILE" | awk '{printf "%.0f", $1/10}')
+
+# Output the formatted result
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall."
