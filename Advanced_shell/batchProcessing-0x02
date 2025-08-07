@@ -1,0 +1,176 @@
+#!/bin/bash
+
+# Batch Pokémon Data Retrieval Script
+# Fetches data for multiple Pokémon and saves to separate JSON files
+# Handles rate limiting with delays between requests
+
+# Configuration
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+OUTPUT_DIR="pokemon_data"
+DELAY_SECONDS=1  # Delay between requests to avoid rate limiting
+
+# List of Pokémon to fetch
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Colors for output (optional enhancement)
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to create output directory
+create_output_directory() {
+    if [ ! -d "$OUTPUT_DIR" ]; then
+        mkdir -p "$OUTPUT_DIR"
+        echo "Created directory: $OUTPUT_DIR"
+    fi
+}
+
+# Function to fetch data for a single Pokémon
+fetch_pokemon_data() {
+    local pokemon_name="$1"
+    local output_file="$OUTPUT_DIR/${pokemon_name}.json"
+    local api_url="${API_BASE_URL}/${pokemon_name}"
+    
+    echo "Fetching data for ${pokemon_name}..."
+    
+    # Make the API request using curl
+    response=$(curl -s -w "%{http_code}" -o "$output_file" "$api_url" 2>/dev/null)
+    http_code="${response: -3}"
+    
+    # Check if curl command was successful
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to connect to API for ${pokemon_name}${NC}"
+        rm -f "$output_file"
+        return 1
+    fi
+    
+    # Check HTTP status code
+    if [ "$http_code" -eq 200 ]; then
+        # Success - verify file was created and is not empty
+        if [ -s "$output_file" ]; then
+            echo -e "Saved data to ${OUTPUT_DIR}/${pokemon_name}.json ✅"
+            return 0
+        else
+            echo -e "${RED}Error: Empty response for ${pokemon_name}${NC}"
+            rm -f "$output_file"
+            return 1
+        fi
+    else
+        # HTTP error
+        echo -e "${RED}API request failed for ${pokemon_name} with HTTP status code: ${http_code}${NC}"
+        rm -f "$output_file"
+        return 1
+    fi
+}
+
+# Function to validate fetched data
+validate_pokemon_data() {
+    local pokemon_name="$1"
+    local output_file="$OUTPUT_DIR/${pokemon_name}.json"
+    
+    # Check if file exists and is valid JSON
+    if [ -f "$output_file" ] && command -v jq >/dev/null 2>&1; then
+        if ! jq empty "$output_file" 2>/dev/null; then
+            echo -e "${YELLOW}Warning: Invalid JSON format for ${pokemon_name}${NC}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# Function to display summary
+display_summary() {
+    local success_count=0
+    local total_count=${#POKEMON_LIST[@]}
+    
+    echo ""
+    echo "=== Fetch Summary ==="
+    
+    for pokemon in "${POKEMON_LIST[@]}"; do
+        if [ -f "$OUTPUT_DIR/${pokemon}.json" ]; then
+            ((success_count++))
+            echo -e "${GREEN}✅ ${pokemon}.json${NC}"
+        else
+            echo -e "${RED}❌ ${pokemon}.json (failed)${NC}"
+        fi
+    done
+    
+    echo ""
+    echo "Successfully fetched: $success_count/$total_count Pokémon"
+    
+    if [ "$success_count" -eq "$total_count" ]; then
+        echo -e "${GREEN}All Pokémon data retrieved successfully!${NC}"
+    else
+        echo -e "${YELLOW}Some Pokémon data failed to retrieve. Check error messages above.${NC}"
+    fi
+}
+
+# Function to handle cleanup on script interruption
+cleanup() {
+    echo ""
+    echo "Script interrupted. Cleaning up..."
+    # Remove any incomplete files
+    for pokemon in "${POKEMON_LIST[@]}"; do
+        local output_file="$OUTPUT_DIR/${pokemon}.json"
+        if [ -f "$output_file" ] && [ ! -s "$output_file" ]; then
+            rm -f "$output_file"
+            echo "Removed incomplete file: $output_file"
+        fi
+    done
+    exit 1
+}
+
+# Set up signal handlers
+trap cleanup INT TERM
+
+# Main execution function
+main() {
+    echo "Starting batch Pokémon data retrieval..."
+    echo "Target Pokémon: ${POKEMON_LIST[*]}"
+    echo "Output directory: $OUTPUT_DIR"
+    echo "Delay between requests: ${DELAY_SECONDS}s"
+    echo ""
+    
+    # Create output directory
+    create_output_directory
+    
+    # Fetch data for each Pokémon
+    local failed_count=0
+    for i in "${!POKEMON_LIST[@]}"; do
+        local pokemon="${POKEMON_LIST[i]}"
+        
+        # Fetch the data
+        if ! fetch_pokemon_data "$pokemon"; then
+            ((failed_count++))
+        else
+            # Validate the fetched data
+            validate_pokemon_data "$pokemon"
+        fi
+        
+        # Add delay between requests (except for the last one)
+        if [ $i -lt $((${#POKEMON_LIST[@]} - 1)) ]; then
+            sleep "$DELAY_SECONDS"
+        fi
+    done
+    
+    # Display summary
+    display_summary
+    
+    # Exit with appropriate code
+    if [ "$failed_count" -eq 0 ]; then
+        echo ""
+        echo "Batch processing completed successfully!"
+        exit 0
+    else
+        echo ""
+        echo "Batch processing completed with $failed_count failures."
+        exit 1
+    fi
+}
+
+# Check if required commands are available
+command -v curl >/dev/null 2>&1 || { echo "Error: curl is required but not installed."; exit 1; }
+
+# Run the main function
+main
