@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Task 5 - Parallel Pokémon Data Retrieval Script
+
+API_BASE_URL="https://pokeapi.co/api/v2/pokemon"
+OUTPUT_DIR="pokemon_data_parallel"
+POKEMON_LIST=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Create output directory if it doesn't exist
+mkdir -p "$OUTPUT_DIR"
+
+# Function to fetch a single Pokémon
+fetch_pokemon() {
+    local name="$1"
+    local url="${API_BASE_URL}/${name}"
+    local file="${OUTPUT_DIR}/${name}.json"
+
+    echo "Fetching $name..."
+    curl -s "$url" -o "$file" && echo "✅ Saved: $file" || echo "❌ Failed: $name"
+}
+
+# Launch each fetch in the background
+for pokemon in "${POKEMON_LIST[@]}"; do
+    fetch_pokemon "$pokemon" &
+done
+
+# Wait for all background processes
+wait
+
+echo ""
+echo "✅ All Pokémon fetches completed in parallel!"
